@@ -769,6 +769,19 @@ impl Index {
     Ok((inscriptions, prev, next))
   }
 
+  pub(crate) fn get_inscriptions_with_offset(&self, n: usize, offset: u64) -> Result<(u64, Vec<(u64, InscriptionId)>)> {
+    let rtx = self.database.begin_read()?;
+    let table = rtx.open_table(INSCRIPTION_NUMBER_TO_INSCRIPTION_ID)?;
+    let count = table.len()? as u64;
+    let records = table
+    .range(offset..)?
+    .take(n)
+    .map(|(number, id)| (number.value(), Entry::load(*id.value())))
+    .collect();
+    Ok((count, records)
+    )
+  }
+
   pub(crate) fn get_feed_inscriptions(&self, n: usize) -> Result<Vec<(u64, InscriptionId)>> {
     Ok(
       self

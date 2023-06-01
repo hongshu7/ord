@@ -2,6 +2,7 @@ use super::*;
 
 pub(super) enum ServerError {
   Internal(Error),
+  BitCoinError(String),
   BadRequest(String),
   NotFound(String),
 }
@@ -23,6 +24,7 @@ impl IntoResponse for ServerError {
       }
       Self::NotFound(message) => (StatusCode::NOT_FOUND, message).into_response(),
       Self::BadRequest(message) => (StatusCode::BAD_REQUEST, message).into_response(),
+      Self::BitCoinError(message) => (StatusCode::INTERNAL_SERVER_ERROR, message).into_response(),
     }
   }
 }
@@ -43,5 +45,11 @@ impl<T> OptionExt<T> for Option<T> {
 impl From<Error> for ServerError {
   fn from(error: Error) -> Self {
     Self::Internal(error)
+  }
+}
+
+impl From<bitcoin::util::address::Error> for ServerError {
+  fn from(error: bitcoin::util::address::Error) -> Self {
+    Self::BitCoinError(error.to_string())
   }
 }

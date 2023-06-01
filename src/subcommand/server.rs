@@ -1,3 +1,4 @@
+
 use {
   self::{
     deserialize_from_str::DeserializeFromStr,
@@ -12,11 +13,11 @@ use {
   },
   axum::{
     body,
-    extract::{Extension, Path, Query},
+    extract::{Extension, Path, Query, Json},
     headers::UserAgent,
     http::{header, HeaderMap, HeaderValue, StatusCode, Uri},
     response::{IntoResponse, Redirect, Response},
-    routing::get,
+    routing::get, routing::post,
     Router, TypedHeader,
   },
   axum_server::Handle,
@@ -55,6 +56,7 @@ impl FromStr for BlockQuery {
   }
 }
 
+
 enum SpawnConfig {
   Https(AxumAcceptor),
   Http,
@@ -64,6 +66,45 @@ enum SpawnConfig {
 #[derive(Deserialize)]
 struct Search {
   query: String,
+}
+
+#[derive(Deserialize)]
+struct InscriptionsRequest {
+  #[serde(default)]
+  offset: u64,
+  #[serde(default)]
+  limit: u64,
+}
+
+#[derive(Serialize)]
+struct InscriptionItem {
+  id: InscriptionId,
+  number: u64,
+  address: Address,
+  // genesis_address: String,
+  genesis_block_height: u64,
+  // genesis_block_hash: BlockHash,
+  genesis_tx_id: Txid,
+  genesis_fee: u64,
+  genesis_timestamp: u32,
+  tx_id: Txid,
+  // location: String,
+  output: OutPoint,
+  value: u64,
+  offset: u64,
+  sat_ordinal: u64,
+  // sat_coinbase_height: u32, // ?
+  content_type: String,
+  content_length: u32,
+  timestamp: u32,
+}
+
+#[derive(Serialize)]
+struct InscriptionResponse {
+  inscriptions: Vec<InscriptionItem>,
+  offset: u64,
+  limit: u64,
+  total: u64,
 }
 
 #[derive(RustEmbed)]
@@ -168,6 +209,7 @@ impl Server {
         .route("/static/*path", get(Self::static_asset))
         .route("/status", get(Self::status))
         .route("/tx/:txid", get(Self::transaction))
+        .route("/api/inscriptions", post(Self::inscriptions_api))
         .layer(Extension(index))
         .layer(Extension(page_config))
         .layer(Extension(Arc::new(config)))
@@ -905,6 +947,75 @@ impl Server {
     )
   }
 
+  async fn inscriptions_api(
+    Extension(page_config): Extension<Arc<PageConfig>>,
+    Extension(index): Extension<Arc<Index>>,
+    Json(payload): Json<InscriptionsRequest>,
+  ) -> ServerResult<Json<InscriptionResponse>> {
+
+  
+    let (total, inscriptions) = index.get_inscriptions_with_offset(payload.limit as usize, payload.offset)?;
+
+    let mut response = InscriptionResponse {
+      inscriptions: Vec::new(),
+      offset: payload.offset,
+      limit: payload.limit,
+      total,
+    };
+    for (number, inscription_id) in inscriptions {
+      response.offset = number;
+      let entry = index
+        .get_inscription_entry(inscription_id)?
+        .ok_or_not_found(|| format!("inscription {inscription_id}"))?;
+  
+      let inscription = index
+        .get_inscription_by_id(inscription_id)?
+        .ok_or_not_found(|| format!("inscription {inscription_id}"))?;
+  
+      let satpoint = index
+        .get_inscription_satpoint_by_id(inscription_id)?
+        .ok_or_not_found(|| format!("inscription {inscription_id}"))?;
+             
+      let output = 
+            index
+              .get_transaction(satpoint.outpoint.txid)?
+              .ok_or_not_found(|| format!("inscription {inscription_id} current transaction"))?
+              .output
+              .into_iter()
+              .nth(satpoint.outpoint.vout.try_into().unwrap())
+              .ok_or_not_found(|| format!("inscription {inscription_id} current transaction output"))?;
+
+      // let blockhash: BlockHash = index.get_transaction_blockhash(satpoint.outpoint.txid)?.unwrap_or(BlockHash::engine());
+      
+      let address = page_config.chain.address_from_script(&output.script_pubkey)?;
+      response.inscriptions.push(
+        InscriptionItem { 
+          id: inscription_id, 
+          number, 
+          address,
+          // genesis_address: (), 
+          genesis_block_height: entry.height, 
+          // genesis_block_hash: blockhash, 
+          genesis_tx_id: satpoint.outpoint.txid, 
+          genesis_fee: entry.fee, 
+          genesis_timestamp: entry.timestamp,  // ?
+          tx_id: satpoint.outpoint.txid, 
+          // location: (), 
+          output: satpoint.outpoint, 
+          value: output.value, 
+          offset: satpoint.offset, 
+          sat_ordinal: entry.sat.unwrap_or(Sat(0)).n(), 
+          // sat_coinbase_height: (), 
+          content_type: inscription.content_type().unwrap_or("").to_string(),
+          content_length: inscription.content_length().unwrap_or_default().try_into().unwrap(), 
+          timestamp: entry.timestamp,
+        }
+      );
+    }
+  
+    Ok(Json(response))
+  }
+
   async fn redirect_http_to_https(
     Extension(mut destination): Extension<String>,
     uri: Uri,
@@ -1052,9 +1163,10 @@ mod tests {
     }
 
     fn get(&self, path: impl AsRef<str>) -> reqwest::blocking::Response {
-      if let Err(error) = self.index.update() {
-        log::error!("{error}");
-      }
+      // todo: open index update
+      // if let Err(error) = self.index.update() {
+      //   log::error!("{error}");
+      // }
       reqwest::blocking::get(self.join_url(path.as_ref())).unwrap()
     }
 
