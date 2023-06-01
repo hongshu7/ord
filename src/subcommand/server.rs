@@ -1247,10 +1247,9 @@ mod tests {
     }
 
     fn get(&self, path: impl AsRef<str>) -> reqwest::blocking::Response {
-      // todo: open index update
-      // if let Err(error) = self.index.update() {
-      //   log::error!("{error}");
-      // }
+      if let Err(error) = self.index.update() {
+        log::error!("{error}");
+      }
       reqwest::blocking::get(self.join_url(path.as_ref())).unwrap()
     }
 
