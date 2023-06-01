@@ -87,11 +87,11 @@ struct InscriptionItem {
   genesis_tx_id: Txid,
   genesis_fee: u64,
   genesis_timestamp: u32,
+  genesis_offset: u64,
   tx_id: Txid,
   // location: String,
   output: OutPoint,
   value: u64,
-  offset: u64,
   sat_ordinal: u64,
   // sat_coinbase_height: u32, // ?
   content_type: String,
@@ -102,6 +102,31 @@ struct InscriptionItem {
 #[derive(Serialize)]
 struct InscriptionResponse {
   inscriptions: Vec<InscriptionItem>,
+  offset: u64,
+  limit: u64,
+}
+
+#[derive(Serialize)]
+struct InscriptionContent {
+  id: InscriptionId,
+  number: u64,
+  vout: u32,
+  genesis_address: Address,
+  genesis_block_height: u64,
+  // genesis_block_hash: BlockHash,
+  genesis_tx_id: Txid,
+  genesis_fee: u64,
+  genesis_timestamp: u32,
+  genesis_offset: u64,
+  sat_ordinal: u64,
+  content_type: String,
+  content_length: u32,
+  content: String,
+}
+
+#[derive(Serialize)]
+struct InscriptionContentResponse {
+  inscriptions: Vec<InscriptionContent>,
   offset: u64,
   limit: u64,
 }
@@ -208,7 +233,8 @@ impl Server {
         .route("/static/*path", get(Self::static_asset))
         .route("/status", get(Self::status))
         .route("/tx/:txid", get(Self::transaction))
-        .route("/api/inscriptions", post(Self::inscriptions_api))
+        .route("/api/inscriptions", post(Self::api_inscriptions))
+        .route("/api/contents", post(Self::api_inscriptions_content))
         .layer(Extension(index))
         .layer(Extension(page_config))
         .layer(Extension(Arc::new(config)))
@@ -946,7 +972,7 @@ impl Server {
     )
   }
 
-  async fn inscriptions_api(
+  async fn api_inscriptions(
     Extension(page_config): Extension<Arc<PageConfig>>,
     Extension(index): Extension<Arc<Index>>,
     Json(payload): Json<InscriptionsRequest>,
@@ -997,16 +1023,76 @@ impl Server {
           genesis_tx_id: satpoint.outpoint.txid, 
           genesis_fee: entry.fee, 
           genesis_timestamp: entry.timestamp,  // ?
+          genesis_offset: satpoint.offset, 
           tx_id: satpoint.outpoint.txid, 
           // location: (), 
           output: satpoint.outpoint, 
           value: output.value, 
-          offset: satpoint.offset, 
           sat_ordinal: entry.sat.unwrap_or(Sat(0)).n(), 
           // sat_coinbase_height: (), 
           content_type: inscription.content_type().unwrap_or("").to_string(),
           content_length: inscription.content_length().unwrap_or_default().try_into().unwrap(), 
           timestamp: entry.timestamp,
+        }
+      );
+    }
+  
+    Ok(Json(response))
+  }
+
+  async fn api_inscriptions_content(
+    Extension(page_config): Extension<Arc<PageConfig>>,
+    Extension(index): Extension<Arc<Index>>,
+    Json(payload): Json<InscriptionsRequest>,
+  ) -> ServerResult<Json<InscriptionContentResponse>> {
+
+    
+    let inscriptions = index.get_inscriptions_with_offset(payload.limit as usize, payload.offset)?;
+
+    let mut response = InscriptionContentResponse {
+      inscriptions: Vec::new(),
+      offset: payload.offset,
+      limit: payload.limit,
+    };
+    for (number, inscription_id) in inscriptions {
+      response.offset = number;
+      let entry = index.get_inscription_entry(inscription_id)?.ok_or_not_found(|| format!("inscription {inscription_id}"))?;
+      let inscription = index.get_inscription_by_id(inscription_id)?.ok_or_not_found(|| format!("inscription {inscription_id}"))?;
+      let satpoint = index.get_inscription_satpoint_by_id(inscription_id)?.ok_or_not_found(|| format!("inscription {inscription_id}"))?;
+
+      let trx = index.get_transaction(satpoint.outpoint.txid)?.ok_or_not_found(|| format!("inscription {inscription_id} current transaction"))?;
+      let output = 
+        trx
+          .output
+          .get(0).ok_or_not_found(|| format!("inscription {inscription_id} current transaction output"))?;
+          // .into_iter()
+          // .nth(satpoint.outpoint.vout.try_into().unwrap())
+          // .ok_or_not_found(|| format!("inscription {inscription_id} current transaction output"))?;
+  
+      let mut content: &str = "";
+      if inscription.media() ==  Media::Text {
+        let bytes = inscription.body().ok_or_not_found(|| format!("inscription {inscription_id} content"))?;
+        content = str::from_utf8(bytes).map_err(|err| anyhow!("Failed to decode {inscription_id} text: {err}"))?;
+      }
+
+      let address = page_config.chain.address_from_script(&output.script_pubkey)?;
+      response.inscriptions.push(
+        InscriptionContent { 
+          id: inscription_id, 
+          number, 
+          vout: satpoint.outpoint.vout,
+          genesis_address: address,  // ?
+          genesis_block_height: entry.height, 
+          // genesis_block_hash: blockhash, 
+          genesis_tx_id: satpoint.outpoint.txid, 
+          genesis_fee: entry.fee, 
+          genesis_timestamp: entry.timestamp,  // ?
+          genesis_offset: satpoint.offset, 
+          sat_ordinal: entry.sat.unwrap_or(Sat(0)).n(), 
+          // sat_coinbase_height: (), 
+          content_type: inscription.content_type().unwrap_or("").to_string(),
+          content_length: inscription.content_length().unwrap_or_default().try_into().unwrap(), 
+          content: String::from(content),
         }
       );
     }
