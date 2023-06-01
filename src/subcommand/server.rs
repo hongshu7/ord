@@ -104,7 +104,6 @@ struct InscriptionResponse {
   inscriptions: Vec<InscriptionItem>,
   offset: u64,
   limit: u64,
-  total: u64,
 }
 
 #[derive(RustEmbed)]
@@ -954,13 +953,12 @@ impl Server {
   ) -> ServerResult<Json<InscriptionResponse>> {
 
   
-    let (total, inscriptions) = index.get_inscriptions_with_offset(payload.limit as usize, payload.offset)?;
+    let inscriptions = index.get_inscriptions_with_offset(payload.limit as usize, payload.offset)?;
 
     let mut response = InscriptionResponse {
       inscriptions: Vec::new(),
       offset: payload.offset,
       limit: payload.limit,
-      total,
     };
     for (number, inscription_id) in inscriptions {
       response.offset = number;
