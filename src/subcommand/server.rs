@@ -1057,14 +1057,14 @@ impl Server {
       let inscription = index.get_inscription_by_id(inscription_id)?.ok_or_not_found(|| format!("inscription {inscription_id}"))?;
       // let satpoint = index.get_inscription_satpoint_by_id(inscription_id)?.ok_or_not_found(|| format!("inscription {inscription_id}"))?;
 
-      let trx = index.get_transaction(inscription_id.txid)?.ok_or_not_found(|| format!("inscription {inscription_id} current transaction"))?;
       let output = 
-        trx
+        index.get_transaction(inscription_id.txid)?
+        .ok_or_not_found(|| format!("inscription {inscription_id} current transaction"))?
           .output
-          .get(0).ok_or_not_found(|| format!("inscription {inscription_id} current transaction output"))?;
-          // .into_iter()
-          // .nth(satpoint.outpoint.vout.try_into().unwrap())
-          // .ok_or_not_found(|| format!("inscription {inscription_id} current transaction output"))?;
+          // .get(0).ok_or_not_found(|| format!("inscription {inscription_id} current transaction output"))?;
+          .into_iter()
+          .nth(inscription_id.index.try_into().unwrap())
+          .ok_or_not_found(|| format!("inscription {inscription_id} current transaction output"))?;
   
       let mut content: &str = "";
       if inscription.media() ==  Media::Text {
