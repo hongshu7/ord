@@ -81,13 +81,12 @@ struct InscriptionItem {
   id: InscriptionId,
   number: u64,
   address: Address,
-  // genesis_address: String,
   genesis_block_height: u64,
   // genesis_block_hash: BlockHash,
   genesis_tx_id: Txid,
   genesis_fee: u64,
   genesis_timestamp: u32,
-  genesis_offset: u64,
+  offset: u64,
   tx_id: Txid,
   // location: String,
   output: OutPoint,
@@ -110,14 +109,13 @@ struct InscriptionResponse {
 struct InscriptionContent {
   id: InscriptionId,
   number: u64,
-  vout: u32,
   genesis_address: Address,
   genesis_block_height: u64,
   // genesis_block_hash: BlockHash,
   genesis_tx_id: Txid,
   genesis_fee: u64,
   genesis_timestamp: u32,
-  genesis_offset: u64,
+  genesis_offset: u32,
   sat_ordinal: u64,
   content_type: String,
   content_length: u32,
@@ -1017,13 +1015,12 @@ impl Server {
           id: inscription_id, 
           number, 
           address,
-          // genesis_address: (), 
           genesis_block_height: entry.height, 
           // genesis_block_hash: blockhash, 
-          genesis_tx_id: satpoint.outpoint.txid, 
+          genesis_tx_id: inscription_id.txid, 
           genesis_fee: entry.fee, 
           genesis_timestamp: entry.timestamp,  // ?
-          genesis_offset: satpoint.offset, 
+          offset: satpoint.offset, 
           tx_id: satpoint.outpoint.txid, 
           // location: (), 
           output: satpoint.outpoint, 
@@ -1058,9 +1055,9 @@ impl Server {
       response.offset = number;
       let entry = index.get_inscription_entry(inscription_id)?.ok_or_not_found(|| format!("inscription {inscription_id}"))?;
       let inscription = index.get_inscription_by_id(inscription_id)?.ok_or_not_found(|| format!("inscription {inscription_id}"))?;
-      let satpoint = index.get_inscription_satpoint_by_id(inscription_id)?.ok_or_not_found(|| format!("inscription {inscription_id}"))?;
+      // let satpoint = index.get_inscription_satpoint_by_id(inscription_id)?.ok_or_not_found(|| format!("inscription {inscription_id}"))?;
 
-      let trx = index.get_transaction(satpoint.outpoint.txid)?.ok_or_not_found(|| format!("inscription {inscription_id} current transaction"))?;
+      let trx = index.get_transaction(inscription_id.txid)?.ok_or_not_found(|| format!("inscription {inscription_id} current transaction"))?;
       let output = 
         trx
           .output
@@ -1075,19 +1072,18 @@ impl Server {
         content = str::from_utf8(bytes).map_err(|err| anyhow!("Failed to decode {inscription_id} text: {err}"))?;
       }
 
-      let address = page_config.chain.address_from_script(&output.script_pubkey)?;
+      let genesis_address = page_config.chain.address_from_script(&output.script_pubkey)?;
       response.inscriptions.push(
         InscriptionContent { 
           id: inscription_id, 
           number, 
-          vout: satpoint.outpoint.vout,
-          genesis_address: address,  // ?
+          genesis_address: genesis_address,  // ?
           genesis_block_height: entry.height, 
           // genesis_block_hash: blockhash, 
-          genesis_tx_id: satpoint.outpoint.txid, 
+          genesis_tx_id: inscription_id.txid, 
           genesis_fee: entry.fee, 
           genesis_timestamp: entry.timestamp,  // ?
-          genesis_offset: satpoint.offset, 
+          genesis_offset: inscription_id.index, 
           sat_ordinal: entry.sat.unwrap_or(Sat(0)).n(), 
           // sat_coinbase_height: (), 
           content_type: inscription.content_type().unwrap_or("").to_string(),
