@@ -109,7 +109,7 @@ struct InscriptionResponse {
 struct InscriptionContent {
   id: InscriptionId,
   number: u64,
-  // genesis_address: Address,
+  genesis_address: Address,
   genesis_block_height: u64,
   // genesis_block_hash: BlockHash,
   genesis_tx_id: Txid,
@@ -1038,7 +1038,7 @@ impl Server {
   }
 
   async fn api_inscriptions_content(
-    // Extension(page_config): Extension<Arc<PageConfig>>,
+    Extension(page_config): Extension<Arc<PageConfig>>,
     Extension(index): Extension<Arc<Index>>,
     Json(payload): Json<InscriptionsRequest>,
   ) -> ServerResult<Json<InscriptionContentResponse>> {
@@ -1054,9 +1054,13 @@ impl Server {
     for (number, inscription_id) in inscriptions {
       response.offset = number;
       let entry = index.get_inscription_entry(inscription_id)?.ok_or_not_found(|| format!("inscription {inscription_id}"))?;
-      let inscription = index.get_inscription_by_id(inscription_id)?.ok_or_not_found(|| format!("inscription {inscription_id}"))?;
+      // let inscription = index.get_inscription_by_id(inscription_id)?.ok_or_not_found(|| format!("inscription {inscription_id}"))?;
       // let satpoint = index.get_inscription_satpoint_by_id(inscription_id)?.ok_or_not_found(|| format!("inscription {inscription_id}"))?;
+      let trx = index.get_transaction(inscription_id.txid)?.ok_or_not_found(|| format!("inscription {inscription_id} current transaction"))?;
+      let inscription = Inscription::from_transaction(&trx).ok_or_not_found(|| format!("inscription {inscription_id}"))?;
 
+      let output = trx.output.into_iter().nth(inscription_id.index.try_into().unwrap())
+          .ok_or_not_found(|| format!("inscription {inscription_id} current transaction output"))?;
       // let output = 
       //   index.get_transaction(inscription_id.txid)?
       //   .ok_or_not_found(|| format!("inscription {inscription_id} current transaction"))?
@@ -1065,19 +1069,19 @@ impl Server {
       //     .into_iter()
       //     .nth(inscription_id.index.try_into().unwrap())
       //     .ok_or_not_found(|| format!("inscription {inscription_id} current transaction output"))?;
-  
+      
       let mut content: &str = "";
       if inscription.media() ==  Media::Text {
         let bytes = inscription.body().ok_or_not_found(|| format!("inscription {inscription_id} content"))?;
         content = str::from_utf8(bytes).map_err(|err| anyhow!("Failed to decode {inscription_id} text: {err}"))?;
       }
 
-      // let genesis_address = page_config.chain.address_from_script(&output.script_pubkey)?;
+      let genesis_address = page_config.chain.address_from_script(&output.script_pubkey)?;
       response.inscriptions.push(
         InscriptionContent { 
           id: inscription_id, 
           number, 
-          // genesis_address: genesis_address,  // ?
+          genesis_address,  // ?
           genesis_block_height: entry.height, 
           // genesis_block_hash: blockhash, 
           genesis_tx_id: inscription_id.txid, 
