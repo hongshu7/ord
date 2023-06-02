@@ -1071,7 +1071,7 @@ impl Server {
       //     .ok_or_not_found(|| format!("inscription {inscription_id} current transaction output"))?;
       
       let mut content: &str = "";
-      if inscription.media() ==  Media::Text {
+      if inscription.media() ==  Media::Text && inscription.content_length().unwrap_or(0) < 1000 {
         let bytes = inscription.body().ok_or_not_found(|| format!("inscription {inscription_id} content"))?;
         content = str::from_utf8(bytes).map_err(|err| anyhow!("Failed to decode {inscription_id} text: {err}"))?;
       }
