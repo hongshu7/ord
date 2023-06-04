@@ -1069,11 +1069,22 @@ impl Server {
       //     .into_iter()
       //     .nth(inscription_id.index.try_into().unwrap())
       //     .ok_or_not_found(|| format!("inscription {inscription_id} current transaction output"))?;
+
+    Ok(
+      Self::content_response(inscription)
+        .ok_or_not_found(|| format!("inscription {inscription_id} content"))?
+        .into_response(),
+    )
+
       
       let mut content: &str = "";
       if inscription.media() ==  Media::Text && inscription.content_length().unwrap_or(0) < 1000 {
         let bytes = inscription.body().ok_or_not_found(|| format!("inscription {inscription_id} content"))?;
-        content = str::from_utf8(bytes).map_err(|err| anyhow!("Failed to decode {inscription_id} text: {err}"))?;
+        content = match str::from_utf8(bytes) {
+            Ok(c) => c,
+            Err(e) => "{\"error\":1}",
+        }
+        // content = str::from_utf8(bytes).map_err(|err| anyhow!("Failed to decode {inscription_id} text: {err}"))?;
       }
 
       let genesis_address = page_config.chain.address_from_script(&output.script_pubkey)?;
