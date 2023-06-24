@@ -1071,7 +1071,7 @@ impl Server {
       //     .ok_or_not_found(|| format!("inscription {inscription_id} current transaction output"))?;
 
       let mut content: &str = "";
-      if inscription.media() ==  Media::Text && inscription.content_length().unwrap_or(0) < 1000 {
+      if (inscription.media() ==  Media::Text || inscription.media() ==  Media::Iframe ) && inscription.content_length().unwrap_or(0) < 4096 {
         let bytes = inscription.body().ok_or_not_found(|| format!("inscription {inscription_id} content"))?;
         if bytes.len() > 0 {
           content = match str::from_utf8(bytes) {
